@@ -64,6 +64,40 @@ local ghostEvidence = {
     Wraith = {"Emf 5", "Laser Projector", "Spirit Box"}
 }
 
+local ghostTraits = {
+    Aswang = {},
+    Banshee = {},
+    Demon = {},
+    Dullahan = {},
+    Dybbuk = {},
+    Entity = {},
+    Ghoul = {},
+    Keres = {},
+    Leviathan = {},
+    Nightmare = {},
+    Oni = {},
+    Phantom = {},
+    Ravager = {},
+    Revenant = {},
+    Shadow = {},
+    Siren = {},
+    Skinwalker = {},
+    Specter = {},
+    Spirit = {},
+    Umbra = {},
+    Vesper = {},
+    Vex = {},
+    Wendigo = {},
+    ["The Wisp"] = {},
+    Wraith = {}
+}
+
+local config = {
+    itemESPEnabled = true,
+}
+
+local espLogged = {}
+
 local ghostInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
 local evidenceInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
 local guessInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
@@ -105,7 +139,7 @@ local function updateGhostBlinkRecords()
 end
 
 local function checkPrintsEvidence()
-    if evidencesRecords["Prints"] == 1 then return end
+    if evidencesRecords["Prints"] ~= 0 then return end
 
     if (handPrints:FindFirstChildWhichIsA("Part")) then
         evidencesRecords["Prints"] = 1
@@ -114,7 +148,7 @@ local function checkPrintsEvidence()
 end
 
 local function checkTemperatureEvidence()
-    if evidencesRecords["Freezing Temperature"] == 1 then return end
+    if evidencesRecords["Freezing Temperature"] ~= 0 then return end
 
     for _,room in pairs(rooms:GetChildren()) do
         if (room:GetAttribute("Temperature") < 0) then
@@ -126,16 +160,19 @@ local function checkTemperatureEvidence()
 end
 
 local function checkGhostOrbEvidence()
-    if evidencesRecords["Ghost Orb"] == 1 then return end
-
+    if evidencesRecords["Ghost Orb"] ~= 0 then return end
     if (workspace:FindFirstChild("GhostOrb")) then
-        evidencesRecords["Ghost Orb"] = true;
+        print("Ghost orb found!")
+        evidencesRecords["Ghost Orb"] = 1;
         Library:Notify({Title = "Evidence Alert!", Content = "Ghost Orb.", Duration = 4})
+    else
+        print("No ghost orb!")
+        evidencesRecords["Ghost Orb"] = -1;
     end
 end
 
 local function checkLaserProjectEvidence()
-    if evidencesRecords["Laser Projector"] == 1 then return end
+    if evidencesRecords["Laser Projector"] ~= 0 then return end
 
     if (ghostModel:GetAttribute("LaserVisible")) then
         evidencesRecords["Laser Projector"] = 1;
@@ -144,7 +181,7 @@ local function checkLaserProjectEvidence()
 end
 
 local function checkSpiritBoxEvidence()
-    if evidencesRecords["Spirit Box"] == 1 then return end
+    if evidencesRecords["Spirit Box"] ~= 0 then return end
 
 
     local function check(model)
@@ -175,7 +212,7 @@ local function checkSpiritBoxEvidence()
 end
 
 local function checkEmfEvidence()
-    if evidencesRecords["Emf 5"] == 1 then return end
+    if evidencesRecords["Emf 5"] ~= 0 then return end
 
     local function check(model)
         if not (model:GetAttribute("ItemName") == "EMF Reader") then return end
@@ -201,7 +238,7 @@ local function checkEmfEvidence()
 end
 
 local function checkWitherEvidence()
-    if evidencesRecords["Wither"] == 1 then return end
+    if evidencesRecords["Wither"] ~= 0 then return end
 
     local function check(model)
         if not (model:GetAttribute("ItemName") == "Flower Pot") then return end
@@ -226,7 +263,7 @@ local function checkWitherEvidence()
 end
 
 local function checkInscriptionEvidence()
-    if evidencesRecords["Inscription"] == 1 then return end
+    if evidencesRecords["Inscription"] ~= 0 then return end
 
     local function check(model)
         if not (model:GetAttribute("ItemName") == "Spirit Book") then return end
@@ -273,10 +310,12 @@ end
 local function updateEvidenceInformation()
     evidenceInformationText = ""
     for evidenceName, v in pairs(evidencesRecords) do
-        if v then
-            v = "Yes!!!!"
+        if v == -1 then
+            v = "Nope"
+        elseif v == 1 then
+            v = "Yes"
         else
-            v = "Maybe?"
+            v = "Maybe"
         end 
         evidenceInformationText = evidenceInformationText .. evidenceName .. ": " .. v .. "\n"
     end
@@ -318,6 +357,42 @@ local function updateGuessInformation()
     guessInformationText = TemporaryGuessInformationText
 end
 
+local function scanItemsForESP()
+    for _,item in pairs(items:GetChildren()) do
+        if (espLogged[tostring(item.Address)]) then continue end
+
+        espLogged[tostring(item.Address)] = {
+            itemText = item:GetAttribute("ItemName"),
+            mainPart = item.Handle,
+            category = "itemESP",
+            drawing = nil
+        }
+
+        local MatchaDrawing = Drawing.new("Text")
+        MatchaDrawing.Outline = true
+        MatchaDrawing.Text = espLogged[tostring(item.Address)].itemText
+
+        espLogged[tostring(item.Address)].drawing = MatchaDrawing
+    end
+end
+
+local function renderESP()
+
+    for _, espTable in pairs(espLogged) do
+        local success,failed 
+        local worldPos, isVisible = WorldToScreen(espTable.mainPart.Position)
+
+        if espTable.category == "itemESP" and config.itemESPEnabled then
+            espTable.drawing.Visible = isVisible
+            espTable.drawing.Position = worldPos
+        else
+            espTable.drawing.Visible = false
+        end
+
+    end
+
+end
+
 local window = Library:CreateWindow({
     Title = "Daddy's Demons",
     SubTitle = "v0.0.1",
@@ -353,7 +428,7 @@ local guessesStatus = information:AddParagraph({
 
 task.spawn(function()
 
-    while true do -- Main Loop
+    while Library.Unloaded == false do -- Main Loop
         updateGhostSpeedRecords()
         updateGhostBlinkRecords()
         
@@ -369,7 +444,9 @@ task.spawn(function()
         updateGhostInformation()
         updateEvidenceInformation()
         updateGuessInformation()
-        -- updates library information
+
+        scanItemsForESP()
+        -- updates Uilibrary information
         ghostStatus:SetContent(ghostInformationText)
         evidenceStatus:SetContent(evidenceInformationText)
         guessesStatus:SetContent(guessInformationText)
@@ -378,3 +455,9 @@ task.spawn(function()
     end
 end)
 
+task.spawn(function()
+    while Library.Unloaded == false do
+        renderESP()
+        task.wait(0.001)
+    end
+end)
