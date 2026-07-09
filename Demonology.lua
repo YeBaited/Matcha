@@ -1,13 +1,21 @@
+local TheoOffsets = httpget("https://offsets.imtheo.lol/version-90f2fddd3b244ff6/offsets.json")
 loadstring(game:HttpGet("https://scripts.wabisabi.mom/wabi-sabi-ui-lib.lua"))()
-local Library = WabiSabi
 
 local players = game:GetService("Players")
+local httpService = game:GetService("HttpService")
+
+local Library = WabiSabi
+TheoOffsets = httpService:JSONDecode(TheoOffsets)
+
+local offsets = TheoOffsets.Offsets
 
 local ghostModel = workspace.Ghost
 local map = workspace.Map
 local handPrints = workspace.Handprints
 local items = workspace.Items
 local scratchText = workspace.ScratchText
+local saltPile = workspace.SaltPiles
+local brokenGlass = workspace.BrokenGlass
 local ghostHumanoid = ghostModel.Humanoid
 local rooms = map.Rooms
 
@@ -18,6 +26,7 @@ local ghostCurrentSpeed = 0
 local ghostGender = "N/A"
 local ghostAverageBlink = 0
 local ghostHunting = false
+local preHuntSpeed = 0
 
 local ghostSpeedRecords = {}
 local ghostBlinkRecords = {}
@@ -32,8 +41,12 @@ local evidencesRecords = { -- -1 No | 0 Maybe | 1 Yes
     ["Wither"] = 0,
 }
 
-local otherEvidenceRecords = {
-    ["requiredFemale"] = 0,
+local ghostTraitsRecords = {
+    ["IsFemale"] = 0,
+    ["IgnoresSalt"] = 0,
+    ["SaltSlowed"] = 0,
+    ["CanSlow"] = 0,
+    ["Fast"] = 0,
 }
 
 local ghostEvidence = {
@@ -65,14 +78,14 @@ local ghostEvidence = {
 }
 
 local ghostTraits = {
-    Aswang = {},
+    Aswang = {"SaltSlowed"},
     Banshee = {},
     Demon = {},
     Dullahan = {},
     Dybbuk = {},
     Entity = {},
     Ghoul = {},
-    Keres = {},
+    Keres = {"IsFemale"},
     Leviathan = {},
     Nightmare = {},
     Oni = {},
@@ -80,7 +93,7 @@ local ghostTraits = {
     Ravager = {},
     Revenant = {},
     Shadow = {},
-    Siren = {},
+    Siren = {"IsFemale", "CanSlow"},
     Skinwalker = {},
     Specter = {},
     Spirit = {},
@@ -89,11 +102,17 @@ local ghostTraits = {
     Vex = {},
     Wendigo = {},
     ["The Wisp"] = {},
-    Wraith = {}
+    Wraith = {"IgnoresSalt"}
 }
+
+local ignoredGhost = {}
 
 local config = {
     itemESPEnabled = true,
+    roomESPEnabled = true,
+    shardESPEnabled = true,
+    ghostOrbZeroEvidence = false,
+    
 }
 
 local espLogged = {}
@@ -101,6 +120,7 @@ local espLogged = {}
 local ghostInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
 local evidenceInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
 local guessInformationText = "No information about the ghost! (If you're seeing this, it's broken...)"
+local noteInformationText = "I have no clue..."
 
 local function updateGhostSpeedRecords()
     if not ghostHunting then return end
@@ -144,6 +164,17 @@ local function checkPrintsEvidence()
     if (handPrints:FindFirstChildWhichIsA("Part")) then
         evidencesRecords["Prints"] = 1
         Library:Notify({Title = "Evidence Alert!", Content = "Prints.", Duration = 4 })
+        return
+    end
+
+    if (saltPile:FindFirstChild("DisturbedSaltLine")) then
+        if (handPrints:FindFirstChildWhichIsA("Part")) then
+            evidencesRecords["Prints"] = 1
+            Library:Notify({Title = "Evidence Alert!", Content = "Prints.", Duration = 4 })
+            return
+        end
+        evidencesRecords["Prints"] = -1
+        return
     end
 end
 
@@ -166,8 +197,7 @@ local function checkGhostOrbEvidence()
         evidencesRecords["Ghost Orb"] = 1;
         Library:Notify({Title = "Evidence Alert!", Content = "Ghost Orb.", Duration = 4})
     else
-        print("No ghost orb!")
-        evidencesRecords["Ghost Orb"] = -1;
+        evidencesRecords["Ghost Orb"] = (config.ghostOrbZeroEvidence) and 0 or -1;
     end
 end
 
@@ -222,19 +252,23 @@ local function checkEmfEvidence()
             Library:Notify({Title = "Evidence Alert!", Content = "EMF 5", Duration = 4})
             return;
         end
-        
     end
 
     for _,gameItem in pairs(items:GetChildren()) do
-        check(gameItem)
+        if check(gameItem) then return end
     end
 
     for _,gamePlayer in pairs(players:GetChildren()) do
         for _,playerItem in pairs(gamePlayer.Character:GetChildren()) do
-            check(playerItem)
+            if check(playerItem) then return end
         end
     end
 
+    if (ghostModel:GetAttribute("LastEMFLevel5Time")) then
+        evidencesRecords["Emf 5"] = 1
+        Library:Notify({Title = "Evidence Alert!", Content = "EMF 5", Duration = 4})
+        return
+    end
 end
 
 local function checkWitherEvidence()
@@ -292,17 +326,102 @@ local function checkInscriptionEvidence()
 
 end
 
+local function checkTraitsEvidence()
+
+    local function checkFemale()
+        if ghostTraitsRecords["IsFemale"] ~= 0 then return end
+        if (ghostGender == "Female") then     
+            ghostTraitsRecords["IsFemale"] = 1
+            Library:Notify({Title = "Trait found!", Content = "Female...", Duration = 4})
+            return
+        end
+
+        if (ghostGender == "Male") then
+            ghostTraitsRecords["IsFemale"] = -1
+            table.insert(ignoredGhost, "Keres")
+            table.insert(ignoredGhost, "Siren")
+            return
+        end
+    end
+
+    local function checkCanSlow()
+        if ghostTraitsRecords["CanSlow"] ~= 0 then return end
+        for _,player in pairs(players:GetChildren()) do
+            if player:GetAttribute("Slowed") == true then
+                ghostTraitsRecords["CanSlow"] = 1
+                Library:Notify({Title = "Trait found!", Content = "It can slow!", Duration = 4})
+            end
+        end
+    end
+
+    local function checkIgnoreSalt()
+        if ghostTraitsRecords["IgnoresSalt"] ~= 0 then return end
+        if ignoredGhost["Wraith"] then return end
+        if #saltPile:GetChildren() == 0 then return end
+        
+        for _,saltPile in pairs(saltPile:GetChildren()) do
+            local saltPileCenter = saltPile:FindFirstChild("Center")
+            if not saltPileCenter then continue end
+
+            if (saltPileCenter.Position - ghostModel["Right Leg"].Position).Magnitude < 2 then
+                if saltPile.Name ~= "SaltLine" then -- Salt pile changed.
+                    ghostTraitsRecords["IgnoresSalt"] = -1
+                    table.insert(ignoredGhost, "Wraith")
+                    return
+                end
+                ghostTraitsRecords["IgnoresSalt"] = 1
+                Library:Notify({Title = "Trait found!", Content = "Ignores salt", Duration = 4})
+                return
+            end
+        end
+    end
+
+    local function checkIfFast()
+        if ghostTraitsRecords["Fast"] ~= 0 then return end
+        if not ghostHunting then return end
+        if ((ghostCurrentSpeed - preHuntSpeed) > 5) then
+            ghostTraitsRecords["Fast"] = 1
+            Library:Notify({Title = "Trait found!", Content = "Ghost is definitely fast!", Duration = 4})
+        end
+    end
+
+    local function checkSaltSlowed()
+        if ghostTraitsRecords["SaltSlowed"] == 1 then return end
+        
+        for _,saltPile in pairs(saltPile:GetChildren()) do
+            local saltPileCenter = saltPile:FindFirstChild("Center")
+            if not saltPileCenter then continue end
+
+            if (saltPileCenter.Position - ghostModel["Right Leg"].Position).Magnitude < 3 then
+                if (ghostCurrentSpeed < preHuntSpeed) then
+                    ghostTraitsRecords["SaltSlowed"] = 1
+                    Library:Notify({Title = "Trait found!", Content = "Ghost got slowed by salt...", Duration = 4})
+                end
+                return
+            end
+        end
+    end
+
+    checkFemale()
+    checkCanSlow()
+    checkIgnoreSalt()
+    checkIfFast()
+    checkSaltSlowed()
+
+end
 
 local function updateGhostInformation()
     ghostRoom = ghostModel:GetAttribute("FavoriteRoom")
     ghostcurrentLocation = ghostModel:GetAttribute("CurrentRoom")
     --ghostAverageSpeed = ghostAverageSpeed
-    ghostCurrentSpeed = math.floor(memory_read("float", ghostHumanoid.Address+464) * 100) / 100
-    
+    ghostCurrentSpeed = math.floor(memory_read("float", ghostHumanoid.Address+offsets.Humanoid.Walkspeed) * 100) / 100
     ghostGender = ghostModel:GetAttribute("Gender")
     --ghostAverageBlink = ghostAverageBlink
     ghostHunting = ghostModel:GetAttribute("Hunting") or false
 
+    if (ghostHunting == false and preHuntSpeed == 0) then
+        preHuntSpeed = ghostCurrentSpeed
+    end
 
     ghostInformationText = "Ghost Room: " .. ghostRoom .. " \nCurren Location: " .. ghostcurrentLocation .. " \nAverage Speed: " .. ghostAverageSpeed.. " \nCurrent Speed: " .. ghostCurrentSpeed .. " \nGender: " .. ghostGender .. " \n Average Blink: " .. ghostAverageBlink .. "\n Ghost Hunting : " .. tostring(ghostHunting)
 end
@@ -321,36 +440,89 @@ local function updateEvidenceInformation()
     end
 end
 
+local function updateNoteInformation()
+    local temporaryNoteInformation = ""
+    if ghostTraitsRecords["IgnoresSalt"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Probably a wraith.\n"
+    end
+    if ghostTraitsRecords["CanSlow"] == 1 and ghostTraitsRecords["IsFemale"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Probably a siren.\n"
+    end
+
+    if ghostTraitsRecords["Fast"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Keres, might even be an aswang who knows?\nif speed remains the same might be an Oni.\n"
+    end
+
+    if ghostTraitsRecords["SaltSlowed"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "This might actually be a Aswang?!? \n"
+    end
+
+    if evidencesRecords["Ghost Orb"] and ghostOrbZeroEvidence then
+        temporaryNoteInformation = temporaryNoteInformation .. "If this is zero evidence then probably a skinwalker.\n"
+    end
+
+
+    noteInformationText = temporaryNoteInformation
+end
+
 local function updateGuessInformation()
     TemporaryGuessInformationText = ""
+    local ghostGuessData = {}
+    local highestEvidencePassed = 0
 
-    local highestPassedChecks = 0;
-    local ghostChecks = {};
+    local function verifyChecksOnGhost(ghostName, evidences, optionalEvidences)
+        local evidencePassed = 0
+        local traitsPassed = 0
+        
+        for _,ghostEvidence in pairs(evidences) do
 
-    local function validateEvidence(evidences)
-        local passedChecks = 0;
-        for _,evidence in pairs(evidences) do
-           
-            if (evidencesRecords[evidence] == 1) then
-                passedChecks += 1
+            if (evidencesRecords[ghostEvidence] == 1) then
+                evidencePassed += 1
+                continue
+            end
+
+
+            if (evidencesRecords[ghostEvidence] == -1) then
+                evidencePassed -= 2
+                continue
             end
         end
-        return passedChecks
+
+        for _,ghostTrait in pairs(optionalEvidences) do
+            if (ghostTraitsRecords[ghostTrait] == 1) then
+                traitsPassed += 1
+            end
+        end
+
+        return evidencePassed, traitsPassed
     end
 
     for ghostName,ghostEvidences in pairs(ghostEvidence) do
-        local checksPassed = validateEvidence(ghostEvidences)
+        if ignoredGhost[ghostName] then warn(ghostName .. " <- Ignored. ") continue end 
 
-        if (checksPassed > highestPassedChecks) then
-            highestPassedChecks = checksPassed
+        local passedChecks, passedTraitsChecks = verifyChecksOnGhost(ghostName, ghostEvidences, ghostTraits[ghostName])
+        if (passedChecks > highestEvidencePassed) then
+            highestEvidencePassed = passedChecks
         end
 
-        ghostChecks[ghostName] = checksPassed
+        if not ghostGuessData[ghostName] then
+            ghostGuessData[ghostName] = {}
+        end
+
+        table.insert(ghostGuessData[ghostName], passedChecks)
+        table.insert(ghostGuessData[ghostName], passedTraitsChecks)
     end
 
-    for ghostName,_ in pairs(ghostEvidence) do
-        if (ghostChecks[ghostName] == highestPassedChecks) then
-            TemporaryGuessInformationText = TemporaryGuessInformationText .. ghostName .. " | Checks Completed: " .. ghostChecks[ghostName] .. "\n"
+    for ghostName, ghostChecks in pairs(ghostGuessData) do
+        if (ghostChecks[1] == highestEvidencePassed) then
+            TemporaryGuessInformationText = TemporaryGuessInformationText .. ghostName .. " <Traits check: " .. ghostChecks[2] .. "> <"
+
+            for _,evidenceRequired in pairs(ghostEvidence[ghostName]) do
+                if evidencesRecords[evidenceRequired] == 1 then continue end
+                TemporaryGuessInformationText = TemporaryGuessInformationText .. evidenceRequired .. " "
+            end
+
+            TemporaryGuessInformationText = TemporaryGuessInformationText .. ">\n"
         end
     end
 
@@ -360,9 +532,9 @@ end
 local function scanItemsForESP()
     for _,item in pairs(items:GetChildren()) do
         if (espLogged[tostring(item.Address)]) then continue end
-
+        if (item.Handle == nil) then continue end
         espLogged[tostring(item.Address)] = {
-            itemText = item:GetAttribute("ItemName"),
+            espText = item:GetAttribute("ItemName"),
             mainPart = item.Handle,
             category = "itemESP",
             drawing = nil
@@ -370,34 +542,125 @@ local function scanItemsForESP()
 
         local MatchaDrawing = Drawing.new("Text")
         MatchaDrawing.Outline = true
-        MatchaDrawing.Text = espLogged[tostring(item.Address)].itemText
+        MatchaDrawing.Text = item:GetAttribute("ItemName")
 
         espLogged[tostring(item.Address)].drawing = MatchaDrawing
+    end
+
+
+    for espId,espObject in pairs(espLogged) do -- checks if it's in the inventory, if so then clear it from the stored esp.
+        if espObject.category ~= "itemESP" then continue end
+        if espObject.mainPart.Parent == nil then continue end
+        if espObject.mainPart.Parent.Parent == nil then continue end
+        if espObject.mainPart.Parent.Parent.Name == "ToolsHolder" then
+            espLogged[espId].drawing:Remove()
+            espLogged[espId] = nil
+        end
+    end
+    
+end
+
+local function scanRoomsForESP()
+    for _,room in pairs(rooms:GetChildren()) do
+        if (espLogged[tostring(room.Address)]) then continue end
+
+        local roomBoundingBox = room:FindFirstChild("BoundingBox")
+
+        if (roomBoundingBox.ClassName == "Folder") then
+            roomBoundingBox = roomBoundingBox.Part
+        end
+
+        if roomBoundingBox == nil then continue end
+
+        espLogged[tostring(room.Address)] = {
+            espText = room.Name,
+            mainPart = roomBoundingBox,
+            category = "roomESP",
+            drawing = nil
+        }
+
+        local MatchaDrawing = Drawing.new("Text")
+        MatchaDrawing.Outline = true
+        MatchaDrawing.Text = espLogged[tostring(room.Address)].espText
+        MatchaDrawing.Color = Color3.fromRGB(44,192,255)
+
+        espLogged[tostring(room.Address)].drawing = MatchaDrawing
+
+    end
+end
+
+local function scanBrokenGlassForESP()
+    for _, _brokenGlass in pairs(brokenGlass:GetChildren()) do
+        if (espLogged[tostring(_brokenGlass.Address)]) then continue end
+        local part = _brokenGlass:FindFirstChildWhichIsA("WedgePart")
+
+        if not part then continue end
+
+        espLogged[tostring(_brokenGlass.Address)] = {
+            espText = "Broken Glassshards.",
+            mainPart = part,
+            category = "shardESP",
+            drawing = nil
+        }
+
+        local MatchaDrawing = Drawing.new("Text")
+        MatchaDrawing.Outline = true
+        MatchaDrawing.Text = espLogged[tostring(_brokenGlass.Address)].espText
+        MatchaDrawing.Color = Color3.fromRGB(255, 31, 23)
+
+        espLogged[tostring(_brokenGlass.Address)].drawing = MatchaDrawing
     end
 end
 
 local function renderESP()
+    for espId, espTable in pairs(espLogged) do
+        if (espTable.mainPart == nil) then continue end
+            
+        local worldPos, isVisible 
 
-    for _, espTable in pairs(espLogged) do
-        local success,failed 
-        local worldPos, isVisible = WorldToScreen(espTable.mainPart.Position)
+        local didWork, errorMessage = xpcall(function()
+            worldPos, isVisible = WorldToScreen(espTable.mainPart.Position)
+        end, function(erro)
+            warn(tostring(erro))
+            espLogged["espId"] = nil
+            espLogged["espId"].drawing:Remove()
+        end)
+
+        if not didWork then
+            espLogged["espId"] = nil
+            espLogged["espId"].drawing:Remove()
+         continue end
+        
 
         if espTable.category == "itemESP" and config.itemESPEnabled then
             espTable.drawing.Visible = isVisible
             espTable.drawing.Position = worldPos
-        else
-            espTable.drawing.Visible = false
+            continue
+        end
+        
+        if espTable.category == "roomESP" and config.roomESPEnabled then
+            espTable.drawing.Visible = isVisible
+            espTable.drawing.Position = worldPos
+            continue
         end
 
-    end
+        if espTable.category == "shardESP" and config.shardESPEnabled then
+            espTable.drawing.Visible = isVisible
+            espTable.drawing.Position = worldPos
+            continue
+        end
 
+        espTable.drawing.Visible = false
+
+    end
 end
 
 local window = Library:CreateWindow({
     Title = "Daddy's Demons",
     SubTitle = "v0.0.1",
     Resize = true,
-    Size = Vector2.new(580, 600)
+    Size = Vector2.new(580, 700),
+    MinimizeKey = "F1"
 })
 
 local information = window:AddTab({
@@ -405,9 +668,9 @@ local information = window:AddTab({
     Icon = "info",
 })
 
-local logs = window:AddTab({
-    Title = "Logs",
-    Icon = "info",
+local Settings = window:AddTab({
+    Title = "Settings",
+    Icon = "settings",
 })
 
 local ghostStatus = information:AddParagraph({
@@ -420,14 +683,52 @@ local evidenceStatus = information:AddParagraph({
     Content = evidenceInformationText,
 })
 
+local notesStatus = information:AddParagraph({
+    Title = "Doctor's Note...",
+    Content = noteInformationText
+})
+
 local guessesStatus = information:AddParagraph({
-    Title = "Guess Information",
+    Title = "Evidence-Based Guess",
     Content = guessInformationText,
 })
 
+local generalSettingsParagraph = Settings:AddParagraph({ 
+    Title = "General Settings",
+    Content = "Everything related to the ui controls and the scrips configs."
+})
+
+local itemESPToggle = Settings:AddToggle({
+    Title = "Items ESP",
+    Default = true,
+})
+
+local roomESPToggle = Settings:AddToggle({
+    Title = "Rooms ESP",
+    Default = true,
+})
+
+local shardESPToggle = Settings:AddToggle({
+    Title = "Broken Glass ESP",
+    Default = true,
+})
+
+itemESPToggle:OnChanged(function()
+    config.itemESPEnabled = itemESPToggle.Value
+end)
+
+roomESPToggle:OnChanged(function()
+    config.roomESPEnabled = roomESPToggle.Value
+end)
+
+shardESPToggle:OnChanged(function()
+    config.shardESPEnabled = shardESPToggle.Value
+end)
 
 task.spawn(function()
-
+    -- Run only once
+    scanRoomsForESP() -- Only needs to scan once since c'mon rooms don't fucking change in demonology
+    
     while Library.Unloaded == false do -- Main Loop
         updateGhostSpeedRecords()
         updateGhostBlinkRecords()
@@ -440,17 +741,21 @@ task.spawn(function()
         checkEmfEvidence()
         checkWitherEvidence()
         checkInscriptionEvidence()
+
+        checkTraitsEvidence()
         
         updateGhostInformation()
         updateEvidenceInformation()
+        updateNoteInformation()
         updateGuessInformation()
 
         scanItemsForESP()
+        scanBrokenGlassForESP()
         -- updates Uilibrary information
         ghostStatus:SetContent(ghostInformationText)
         evidenceStatus:SetContent(evidenceInformationText)
         guessesStatus:SetContent(guessInformationText)
-        
+        notesStatus:SetContent(noteInformationText)        
         task.wait(0.5)
     end
 end)
