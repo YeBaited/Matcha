@@ -252,6 +252,7 @@ local function checkSpiritBoxEvidence()
     end
 
     for _,gamePlayer in pairs(players:GetChildren()) do
+        if gamePlayer.Character == nil then continue end
         for _,playerItem in pairs(gamePlayer.Character:GetChildren()) do
             check(playerItem)
         end
@@ -566,7 +567,7 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "This might actually be a Aswang?!? \n"
     end
 
-    if evidencesRecords["Ghost Orb"] and config.ghostOrbZeroEvidence then
+    if evidencesRecords["Ghost Orb"] == 1 and config.ghostOrbZeroEvidence then
         temporaryNoteInformation = temporaryNoteInformation .. "If this is zero evidence then probably a skinwalker.\n"
     end
 
@@ -707,7 +708,8 @@ local function scanRoomsForESP()
             espText = room.Name,
             mainPart = roomBoundingBox,
             category = "roomESP",
-            drawing = nil
+            drawing = nil,
+            unremovable = true
         }
 
         local MatchaDrawing = Drawing.new("Text")
@@ -759,7 +761,8 @@ local function scanGhostForESP()
             espText = "Ghost",
             mainPart = ghostHumanoidRootPart,
             category = "ghostESP",
-            drawing = nil
+            drawing = nil,
+            unremovable = true,
     }
 
     local MatchaDrawing = Drawing.new("Text")
@@ -772,7 +775,8 @@ end
 
 local function clearESPLogged()
     warn("==> Clearing ESP-Related data")
-    for espId, _ in pairs(espLogged) do
+    for espId, espObject in pairs(espLogged) do
+        if (espObject.unremovable) then continue end
         espLogged[espId].drawing:Remove()
         espLogged[espId].espText = nil
         espLogged[espId].mainPart = nil
