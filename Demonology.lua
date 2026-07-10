@@ -49,6 +49,7 @@ local ghostTraitsRecords = {
     ["Fast"] = 0,
     ["FastWhileInvis"] = 0,
     ["SlowedByLight"] = 0,
+    ["DulluhanSpeed"] = 0,
 }
 
 local ghostEvidence = {
@@ -83,7 +84,7 @@ local ghostTraits = {
     Aswang = {"SaltSlowed"},
     Banshee = {},
     Demon = {},
-    Dullahan = {},
+    Dullahan = {"DulluhanSpeed"},
     Dybbuk = {},
     Entity = {},
     Ghoul = {},
@@ -469,6 +470,47 @@ local function checkTraitsEvidence()
         end
     end
 
+    local function checkDulluhanSpeed()
+        if ghostTraitsRecords["DulluhanSpeed"] == 1 then return end
+        if ghostHunting then 
+
+            if not scriptData["Dullahanspeedometer"] then
+                scriptData["Dullahanspeedometer"] = {}
+                scriptData["DullahanspeedometerTimestamp"] = {}
+                table.insert(scriptData["Dullahanspeedometer"], ghostCurrentSpeed)
+                table.insert(scriptData["DullahanspeedometerTimestamp"], os.time())
+            end
+
+            if ((os.time() - scriptData["DullahanspeedometerTimestamp"][#scriptData["DullahanspeedometerTimestamp"]]) > 2) then
+                table.insert(scriptData["Dullahanspeedometer"], ghostCurrentSpeed)
+                table.insert(scriptData["DullahanspeedometerTimestamp"], os.time())
+            end
+
+        else
+            if not scriptData["Dullahanspeedometer"] then return end
+            if #scriptData["Dullahanspeedometer"] == 0 then return end
+
+            local checksRequired = #scriptData["Dullahanspeedometer"]-1
+            local checksCompleted = 0
+
+            for i,dullahanSpeed in pairs(scriptData["Dullahanspeedometer"]) do
+                if dullahanSpeed == nil then return end
+                if scriptData["Dullahanspeedometer"][i+1] == nil then return end
+                if scriptData["Dullahanspeedometer"][i+1] > dullahanSpeed then
+                    checksCompleted += 1
+                    if checksCompleted >= checksRequired then
+                        ghostTraitsRecords["DulluhanSpeed"] = 1
+                        Library:Notify({Title = "Trait found!", Content = "Speed increasing, dullahan?", Duration = 4})
+                        return
+                    end
+                end
+            end
+
+            scriptData["Dullahanspeedometer"] = {}
+            scriptData["DullahanspeedometerTimestamp"] = {}
+        end
+    end
+
     checkFemale()
     checkCanSlow()
     checkIgnoreSalt()
@@ -476,7 +518,7 @@ local function checkTraitsEvidence()
     checkSaltSlowed()
     checkFastWhileInvis()
     checkSlowedByLight()
-
+    checkDulluhanSpeed()
 end
 
 local function updateGhostInformation()
@@ -580,6 +622,10 @@ local function updateNoteInformation()
 
     if ghostTraitsRecords["SlowedByLight"] == 1 then
         temporaryNoteInformation = temporaryNoteInformation .. "Seems to be slowed by light, Phantom?\n"
+    end
+
+    if ghostTraitsRecords["DulluhanSpeed"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Increasing in speed, Dullahan?"
     end
 
     if temporaryNoteInformation == "" then
@@ -806,10 +852,8 @@ local function resetAllSavedInformation()
 
     ignoredGhost = {}
     scriptData = {}
-    espLogged = {}
     ghostSpeedRecords = {}
     ghostBlinkRecords = {}
-
 
     warn("All data resetted.")
 end
