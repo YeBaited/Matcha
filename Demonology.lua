@@ -124,12 +124,12 @@ local currentTraitConfig = {
 local traitConfig = {
     default = {
         fastCheck1 = 2.5,
-        fastCheck2 = 3,
+        fastCheck2 = 11,
     },
 
     ["difficulty407"] = {
         fastCheck1 = 5,
-        fastCheck2 = 5.5,
+        fastCheck2 = 11,
     }
 }
 
@@ -277,6 +277,8 @@ local function checkEmfEvidence()
     end
 
     for _,gamePlayer in pairs(players:GetChildren()) do
+        local character = gamePlayer.Character
+        if not character then continue end
         for _,playerItem in pairs(gamePlayer.Character:GetChildren()) do
             if check(playerItem) then return end
         end
@@ -307,6 +309,7 @@ local function checkWitherEvidence()
     end
 
     for _,gamePlayer in pairs(players:GetChildren()) do
+        if gamePlayer.Character == nil then continue end
         for _,playerItem in pairs(gamePlayer.Character:GetChildren()) do
             check(playerItem)
         end
@@ -510,8 +513,8 @@ local function updateGhostInformation()
         "Current Speed",
         "Gender",
         "Average Blink",
+        "Pre-Hunt Speed",
         "Ghost Hunting",
-        "Pre-Hunt Speed"
     }
 
     for _, informationTitleOrdered in pairs(orderedGhostInformation) do
@@ -560,7 +563,7 @@ local function updateNoteInformation()
     end
 
     if ghostTraitsRecords["Fast"] == 1 then
-        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Wendigo, might even be an aswang who knows?\nif speed remains the same might be an Oni.\n"
+        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Wendigo, might even be an aswang who knows?\nif speed remains the same might be an Oni.\nIf speed is increasing might dullahan.\n"
     end
 
     if ghostTraitsRecords["SaltSlowed"] == 1 then
@@ -670,7 +673,7 @@ local function scanItemsForESP()
             category = "itemESP",
             drawing = nil
         }
-
+        
         local MatchaDrawing = Drawing.new("Text")
         MatchaDrawing.Outline = true
         MatchaDrawing.Text = espLogged[tostring(item.Address)].espText
@@ -678,16 +681,17 @@ local function scanItemsForESP()
         espLogged[tostring(item.Address)].drawing = MatchaDrawing
     end
 
+    local function scanItemsForESP_Remove(espId)
+        espLogged[espId].drawing:Remove()
+        espLogged[espId] = nil
+    end
 
     for espId,espObject in pairs(espLogged) do -- checks if it's in the inventory, if so then clear it from the stored esp.
         if espObject.category ~= "itemESP" then continue end
-        if espObject.mainPart == nil then continue end
-        if espObject.mainPart.Parent == nil then continue end
-        if espObject.mainPart.Parent.Parent == nil then continue end
-        if espObject.mainPart.Parent.Parent.Name == "ToolsHolder" then
-            espLogged[espId].drawing:Remove()
-            espLogged[espId] = nil
-        end
+        if espObject.mainPart == nil then scanItemsForESP_Remove(espId) continue end
+        if espObject.mainPart.Parent == nil then scanItemsForESP_Remove(espId) continue end
+        if espObject.mainPart.Parent.Parent == nil then scanItemsForESP_Remove(espId) continue end
+        if espObject.mainPart.Parent.Parent.Name == "ToolsHolder" then scanItemsForESP_Remove(espId) end
     end
     
 end
@@ -838,16 +842,26 @@ local function renderESP()
         if (espTable.mainPart == nil) then continue end
             
         local worldPos, isVisible 
+
+        if espTable.mainPart.Parent == nil then
+            espLogged[espId].drawing:Remove()
+            espLogged[espId] = nil
+            return
+        end
+
         local didWork, errorMessage = pcall(function()
             worldPos, isVisible = WorldToScreen(espTable.mainPart.Position)
         end)
 
         if not didWork then
+            warn("===> Rendering ESP failed.")
             warn(errorMessage)
-            warn("==> CLEARING ESP LOGGED <==")
-            clearESPLogged()
-            -- espLogged[espId].drawing:Remove()
-            -- espLogged[espId] = nil
+            print("espId of: " .. espId)
+            print("mainPart Position: " .. tostring(espTable.mainPart))
+            print("parent of mainpart Name: " .. tostring(espTable.mainPart.Parent.Name))
+            -- clearESPLogged()
+            espLogged[espId].drawing:Remove()
+            espLogged[espId] = nil
             return 
         end
         
