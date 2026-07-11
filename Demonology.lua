@@ -20,6 +20,7 @@ local scratchText = workspace.ScratchText
 local saltPile = workspace.SaltPiles
 local brokenGlass = workspace.BrokenGlass
 local doors = workspace.Doors
+local ragdolls = workspace.Ragdolls
 local ghostHumanoid = ghostModel.Humanoid
 local rooms = map.Rooms
 
@@ -123,7 +124,7 @@ local config = {
     ghostESPEnabled = true,
     ghostTracersESPEnabled = true,
     playerEnergyESPEnabled = true,
-    ghostOrbZeroEvidence = false,
+    zeroEvidence = false,
 }
 local currentTraitConfig = {
     fastCheck1 = 2.5,
@@ -187,6 +188,7 @@ local function updateGhostBlinkRecords()
 end
 
 local function checkPrintsEvidence()
+    if config.zeroEvidence then return end
     if evidencesRecords["Prints"] ~= 0 then return end
 
     if (handPrints:FindFirstChildWhichIsA("Part")) then
@@ -196,6 +198,7 @@ local function checkPrintsEvidence()
     end
 
     if (saltPile:FindFirstChild("DisturbedSaltLine")) then
+        
         if (handPrints:FindFirstChildWhichIsA("Part")) then
             evidencesRecords["Prints"] = 1
             Library:Notify({Title = "Evidence Alert!", Content = "Prints.", Duration = 4 })
@@ -224,7 +227,7 @@ local function checkGhostOrbEvidence()
         evidencesRecords["Ghost Orb"] = 1;
         Library:Notify({Title = "Evidence Alert!", Content = "Ghost Orb.", Duration = 4})
     else
-        evidencesRecords["Ghost Orb"] = (config.ghostOrbZeroEvidence) and 0 or -1;
+        evidencesRecords["Ghost Orb"] = (config.zeroEvidence) and 0 or -1;
     end
 end
 
@@ -712,7 +715,7 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "This might actually be a Aswang?!? \n"
     end
 
-    if evidencesRecords["Ghost Orb"] == 1 and config.ghostOrbZeroEvidence then
+    if evidencesRecords["Ghost Orb"] == 1 and config.zeroEvidence then
         temporaryNoteInformation = temporaryNoteInformation .. "If this is zero evidence then probably a skinwalker.\n"
     end
 
@@ -798,7 +801,7 @@ local function updateGuessInformation()
     for ghostName, ghostChecks in pairs(ghostGuessData) do
         if (ghostChecks[1] == highestEvidencePassed) then
             TemporaryGuessInformationText = TemporaryGuessInformationText .. ghostName .. " <Traits check: " .. ghostChecks[2] .. "> <"
-
+            
             for _,evidenceRequired in pairs(ghostEvidence[ghostName]) do
                 if evidencesRecords[evidenceRequired] == 1 then continue end
                 TemporaryGuessInformationText = TemporaryGuessInformationText .. evidenceRequired .. " "
@@ -961,7 +964,8 @@ local function playerEnergyESP()
             mainPart = targetPlayerHumanoidRootPart,
             category = "playerEnergyESP",
             drawing = nil,
-            targetPlayer = player
+            targetPlayer = player,
+            energy = 100,
         }
 
         local MatchaDrawing = Drawing.new("Text")
@@ -971,6 +975,7 @@ local function playerEnergyESP()
 
         espLogged[tostring(player.Address)].drawing = MatchaDrawing
     end
+
 end
 
 local function clearESPLogged()
@@ -1108,13 +1113,20 @@ local function renderESP()
 
         if espTable.category == "playerEnergyESP" and config.playerEnergyESPEnabled then
             local playerEnergyLevel = espTable.targetPlayer:GetAttribute("Energy")
-            if not playerEnergyLevel then continue end
-            espTable.drawing.Text = "Energy: " .. math.floor(playerEnergyLevel)
+            local playerCorpse = ragdolls:FindFirstChild(espTable.targetPlayer.Name)
+            if not playerEnergyLevel then playerEnergyLevel = -6767 end            
+            
+            if playerCorpse then
+                espTable.drawing.Text = "Energy b/Death: " .. espTable.energy or "UNK"
+            else
+                espTable.energy = math.floor(playerEnergyLevel)
+                espTable.drawing.Text = "Energy: " .. espTable.energy or "UNK"
+            end
+
             espTable.drawing.Visible = isVisible
             espTable.drawing.Position = worldPos
             continue
         end
-
         espTable.drawing.Visible = false
     end
 end
@@ -1238,7 +1250,7 @@ GhostTracersToggle:OnChanged(function()
 end)
 
 zeroEvidenceMode:OnChanged(function()
-    config.ghostOrbZeroEvidence = zeroEvidenceMode.Value
+    config.zeroEvidence = zeroEvidenceMode.Value
     evidencesRecords["Ghost Orb"] = 0
 end)
 
