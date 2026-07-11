@@ -115,6 +115,7 @@ local config = {
     roomESPEnabled = true,
     shardESPEnabled = true,
     ghostESPEnabled = true,
+    ghostDirectionESPEnabled = true,
     ghostOrbZeroEvidence = false,
 }
 local currentTraitConfig = {
@@ -481,7 +482,7 @@ local function checkTraitsEvidence()
                 table.insert(scriptData["DullahanspeedometerTimestamp"], os.time())
             end
 
-            if ((os.time() - scriptData["DullahanspeedometerTimestamp"][#scriptData["DullahanspeedometerTimestamp"]]) > 2) then
+            if ((os.time() - scriptData["DullahanspeedometerTimestamp"][#scriptData["DullahanspeedometerTimestamp"]]) > 1) then
                 table.insert(scriptData["Dullahanspeedometer"], ghostCurrentSpeed)
                 table.insert(scriptData["DullahanspeedometerTimestamp"], os.time())
             end
@@ -605,7 +606,7 @@ local function updateNoteInformation()
     end
 
     if ghostTraitsRecords["Fast"] == 1 then
-        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Wendigo, might even be an aswang who knows?\nif speed remains the same might be an Oni.\nIf speed is increasing might dullahan.\n"
+        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Wendigo, might even be an aswang who knows?\nif speed remains the same might be an Oni.\n"
     end
 
     if ghostTraitsRecords["SaltSlowed"] == 1 then
@@ -804,6 +805,7 @@ local function scanBrokenGlassForESP()
 end
 
 local function scanGhostForESP()
+    print("Scanned ghost for ESP")
     local ghostHumanoidRootPart = ghostModel:FindFirstChild("HumanoidRootPart")
     if not ghostHumanoidRootPart then warn("GHOST NOT FOUND!") return end
 
@@ -823,10 +825,30 @@ local function scanGhostForESP()
     espLogged[tostring(ghostModel.Address)].drawing = MatchaDrawing
 end
 
+local function ghostDirectionESP()
+    local ghostHead = ghostModel:FindFirstChild("Head")
+    if not ghostHead then warn("GHOST NOT FOUND!") return end
+
+    espLogged[tostring(ghostModel.Address)] = {
+            espText = "Ghost",
+            mainPart = ghostHead,
+            category = "ghostDirectionESP",
+            drawing = nil,
+            unremovable = true,
+    }
+
+    local MatchaDrawing = Drawing.new("Line")
+    MatchaDrawing.Color = Color3.fromRGB(158, 24, 19)
+    MatchaDrawing.Thickness = 1
+
+    espLogged[tostring(ghostModel.Address)].drawing = MatchaDrawing
+end
+
 local function clearESPLogged()
     warn("==> Clearing ESP-Related data")
     for espId, espObject in pairs(espLogged) do
         if (espObject.unremovable) then continue end
+        print("Removing espLogged with the category of: " .. espObject.category)
         espLogged[espId].drawing:Remove()
         espLogged[espId].espText = nil
         espLogged[espId].mainPart = nil
@@ -839,7 +861,7 @@ local function clearESPLogged()
 end
 
 local function resetAllSavedInformation()
-    warn("All evidence resetted.")
+    warn("Beginning reset.")
     for evidenceName, _ in pairs(evidencesRecords) do
         evidencesRecords[evidenceName] = 0
     end
@@ -936,6 +958,7 @@ local function renderESP()
         end
 
         if espTable.category == "ghostESP" and config.ghostESPEnabled then
+            print("Rendering for ghost ESP")
             local localPlayer = players.LocalPlayer
             local character = localPlayer.Character
             local localPlayerHumanoidRootPart = character.HumanoidRootPart
@@ -943,11 +966,24 @@ local function renderESP()
             espTable.drawing.Text = "Ghost\n[".. math.floor((localPlayerHumanoidRootPart.Position - espTable.mainPart.Position).Magnitude) .. "]"
             espTable.drawing.Visible = isVisible
             espTable.drawing.Position = worldPos
+
+            continue
+        end
+
+        if espTable.category == "ghostDirectionESP" and config.ghostDirectionESPEnabled then
+            local ghostModel = espTable.mainPart.Parent
+            local ghostHumanoidRootPart = ghostModel:FindFirstChild("HumanoidRootPart")
+            if not ghostHumanoidRootPart then continue end
+            
+            local trajectoryPos = WorldToScreen(espTable.mainPart.Position + ghostHumanoidRootPart.AssemblyLinearVelocity)
+
+            espTable.drawing.From = worldPos
+            espTable.drawing.To = trajectoryPos
+
             continue
         end
 
         espTable.drawing.Visible = false
-
     end
 end
 
@@ -1055,8 +1091,9 @@ end)
 task.spawn(function()
     -- Run only once
     scanRoomsForESP()
+    ghostDirectionESP()
     scanGhostForESP()
-    
+
     while Library.Unloaded == false do -- Main Loop
         updateGhostSpeedRecords()
         updateGhostBlinkRecords()
