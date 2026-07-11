@@ -1,5 +1,5 @@
 
-if game.PlaceId == 18199615050 then warn("You're currently in the loob, run this once you get in to a game.") return end
+if game.PlaceId == 18199615050 then warn("You're currently in the room, run this once you get in to a game.") return end
 
 local TheoOffsets = httpget("https://offsets.imtheo.lol/version-90f2fddd3b244ff6/offsets.json")
 loadstring(game:HttpGet("https://scripts.wabisabi.mom/wabi-sabi-ui-lib.lua"))()
@@ -55,6 +55,7 @@ local ghostTraitsRecords = {
     ["SlowedByLight"] = 0,
     ["DulluhanSpeed"] = 0,
     ["OniSpeed"] = 0,
+    ["PhantomBlink"] = 0,
 }
 
 local ghostEvidence = {
@@ -97,7 +98,7 @@ local ghostTraits = {
     Leviathan = {},
     Nightmare = {},
     Oni = {"Fast", "OniSpeed"},
-    Phantom = {"FastWhileInvis"},
+    Phantom = {"phantomBlink"},
     Ravager = {},
     Revenant = {},
     Shadow = {},
@@ -121,11 +122,13 @@ local config = {
     shardESPEnabled = true,
     ghostESPEnabled = true,
     ghostTracersESPEnabled = true,
+    playerEnergyESPEnabled = true,
     ghostOrbZeroEvidence = false,
 }
 local currentTraitConfig = {
     fastCheck1 = 2.5,
     fastCheck2 = 3,
+    phantomChecksRequired = 8
 }
 
 local traitConfig = {
@@ -342,6 +345,7 @@ local function checkInscriptionEvidence()
     end
 
     for _,gamePlayer in pairs(players:GetChildren()) do
+        if gamePlayer.Character == nil then continue end
         for _,playerItem in pairs(gamePlayer.Character:GetChildren()) do
             check(playerItem)
         end
@@ -439,27 +443,34 @@ local function checkTraitsEvidence()
         end
     end
     
-    local function checkFastWhileInvis()
-        if ghostTraitsRecords["FastWhileInvis"] == 1 then return end
+    local function checkPhantomBlink()
+        if ghostTraitsRecords["PhantomBlink"] == 1 then return end
         if not ghostHunting then return end
 
-        if scriptData["verifyFastWhileInvis"] == 2 then
-            ghostTraitsRecords["FastWhileInvis"] = 1
-            Library:Notify({Title = "Trait found!", Content = "Gotten faster while invisible.", Duration = 4})
+        if not scriptData["checkFastBlinkLog"] then
+            scriptData["checkFastBlinkLog"] = {}
+            table.insert(scriptData["checkFastBlinkLog"], ghostCurrentSpeed)
+            return
+        end
+
+        if ghostCurrentSpeed ~= scriptData["checkFastBlinkLog"][#scriptData["checkFastBlinkLog"]] then
+            table.insert(scriptData["checkFastBlinkLog"], ghostCurrentSpeed)
         end
         
-        local blinkStatus = ghostModel:GetAttribute("Transparency")
-
-        if blinkStatus == 0 then 
-            if (ghostCurrentSpeed - ghostPreHuntSpeed) >= currentTraitConfig.fastCheck1 and (ghostCurrentSpeed - ghostPreHuntSpeed) <= currentTraitConfig.fastCheck2 then
-                scriptData["verifyFastWhileInvis"] = 1 
-            end
-        else
-            if (ghostCurrentSpeed == ghostPreHuntSpeed) and scriptData["verifyFastWhileInvis"] == 1 then
-                scriptData["verifyFastWhileInvis"] = 2
+        if #scriptData["checkFastBlinkLog"] < 13 then return end
+        local checksPassed = 0
+        for i = 1,12 do
+            if scriptData["checkFastBlinkLog"][i] == scriptData["checkFastBlinkLog"][i+2] then
+                if scriptData["checkFastBlinkLog"][i+1] ~= scriptData["checkFastBlinkLog"][i+3] then return end
+                checksPassed += 1
             end
         end
 
+        if checksPassed >= currentTraitConfig.phantomChecksRequired then
+            ghostTraitsRecords["PhantomBlink"] = 1
+            Library:Notify({Title = "Trait found!", Content = "Faster when invisible!", Duration = 4})
+        end  
+        
     end
 
     local function checkSlowedByLight() -- This shit is broken might aswell remove this soon i guess 
@@ -581,7 +592,7 @@ local function checkTraitsEvidence()
     checkIgnoreSalt()
     -- checkIfFast()
     checkSaltSlowed()
-    checkFastWhileInvis()
+    checkPhantomBlink()
     checkSlowedByLight()
     checkDulluhanSpeed()
     checkOniSpeed()
@@ -693,8 +704,8 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "Probably a siren.\n"
     end
 
-    if ghostTraitsRecords["Fast"] == 1 then
-        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Oni or a Wendigo, might even be an aswang who knows?\nif speed remains the same might be an Oni.\n"
+    if ghostTraitsRecords["PhantomBlink"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Phantom, due to to it's blinking speed."
     end
 
     if ghostTraitsRecords["SaltSlowed"] == 1 then
@@ -921,7 +932,7 @@ local function ghostTracersESP()
     if not ghostHead then warn("GHOST NOT FOUND!") return end
 
     espLogged[tostring(ghostHead.Address)] = {
-            espText = "Ghost",
+            espText = "GhostTracers",
             mainPart = ghostHead,
             category = "ghostTracersESP",
             drawing = nil,
@@ -934,6 +945,32 @@ local function ghostTracersESP()
     MatchaDrawing.From = Vector2.new(0,0)
 
     espLogged[tostring(ghostHead.Address)].drawing = MatchaDrawing
+end
+
+local function playerEnergyESP()
+    for _,player in pairs(players:GetChildren()) do
+        if player.Address == players.LocalPlayer.Address then continue end
+        if espLogged[tostring(player.Address)] then continue end
+        local character = player.Character
+        if not character then continue end
+        local targetPlayerHumanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+        if not targetPlayerHumanoidRootPart then continue end
+
+        espLogged[tostring(player.Address)] = {
+            espText = "Energy: ",
+            mainPart = targetPlayerHumanoidRootPart,
+            category = "playerEnergyESP",
+            drawing = nil,
+            targetPlayer = player
+        }
+
+        local MatchaDrawing = Drawing.new("Text")
+        MatchaDrawing.Text =  espLogged[tostring(player.Address)].espText
+        MatchaDrawing.Outline = true
+        MatchaDrawing.Color = Color3.fromRGB(0, 255, 0)
+
+        espLogged[tostring(player.Address)].drawing = MatchaDrawing
+    end
 end
 
 local function clearESPLogged()
@@ -1069,6 +1106,15 @@ local function renderESP()
             continue
         end
 
+        if espTable.category == "playerEnergyESP" and config.playerEnergyESPEnabled then
+            local playerEnergyLevel = espTable.targetPlayer:GetAttribute("Energy")
+            if not playerEnergyLevel then continue end
+            espTable.drawing.Text = "Energy: " .. math.floor(playerEnergyLevel)
+            espTable.drawing.Visible = isVisible
+            espTable.drawing.Position = worldPos
+            continue
+        end
+
         espTable.drawing.Visible = false
     end
 end
@@ -1145,6 +1191,12 @@ local GhostTracersToggle = Settings:AddToggle({
     Title = "Ghost Tracers ESP",
     Default = true,
 })
+
+local playerEnergyESPToggle = Settings:AddToggle({
+    Title = "Player Energy ESP",
+    Default = true,
+})
+
 Settings:AddParagraph({ 
     Title = "Game-Related Settings",
     Content = "Mainly for how you want to go about getting evidence and such"
@@ -1175,6 +1227,10 @@ end)
 
 GhostESPToggle:OnChanged(function()
     config.ghostESPEnabled = GhostESPToggle.Value
+end)
+
+playerEnergyESPToggle:OnChanged(function()
+    config.playerEnergyESPEnabled = playerEnergyESPToggle.Value
 end)
 
 GhostTracersToggle:OnChanged(function()
@@ -1234,6 +1290,7 @@ task.spawn(function()
 
         scanItemsForESP()
         scanBrokenGlassForESP()
+        playerEnergyESP()
         -- updates Uilibrary information
         ghostStatus:SetContent(ghostInformationText)
         evidenceStatus:SetContent(evidenceInformationText)
