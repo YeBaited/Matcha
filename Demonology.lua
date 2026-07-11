@@ -1,3 +1,6 @@
+
+if game.PlaceId == 18199615050 then warn("You're currently in the loob, run this once you get in to a game.") return end
+
 local TheoOffsets = httpget("https://offsets.imtheo.lol/version-90f2fddd3b244ff6/offsets.json")
 loadstring(game:HttpGet("https://scripts.wabisabi.mom/wabi-sabi-ui-lib.lua"))()
 
@@ -16,6 +19,7 @@ local items = workspace.Items
 local scratchText = workspace.ScratchText
 local saltPile = workspace.SaltPiles
 local brokenGlass = workspace.BrokenGlass
+local doors = workspace.Doors
 local ghostHumanoid = ghostModel.Humanoid
 local rooms = map.Rooms
 
@@ -386,7 +390,7 @@ local function checkTraitsEvidence()
             local saltPileCenter = saltPile:FindFirstChild("Center")
             if not saltPileCenter then continue end
 
-            if (saltPileCenter.Position - ghostModel["Right Leg"].Position).Magnitude < 2 then
+            if (saltPileCenter.Position - ghostModel["Right Leg"].Position).Magnitude < 3 then
                 if saltPile.Name ~= "SaltLine" then -- Salt pile changed.
                     ghostTraitsRecords["IgnoresSalt"] = -1
                     table.insert(ignoredGhost, "Wraith")
@@ -492,7 +496,6 @@ local function checkTraitsEvidence()
             if not scriptData["Dullahanspeedometer"] then return end
             if #scriptData["Dullahanspeedometer"] == 0 then return end
 
-            local checksRequired = #scriptData["Dullahanspeedometer"]-1
             local checksCompleted = 0
 
             for i,dullahanSpeed in pairs(scriptData["Dullahanspeedometer"]) do
@@ -500,11 +503,13 @@ local function checkTraitsEvidence()
                 if scriptData["Dullahanspeedometer"][i+1] == nil then return end
                 if scriptData["Dullahanspeedometer"][i+1] > dullahanSpeed then
                     checksCompleted += 1
-                    if checksCompleted >= checksRequired then
+                    if checksCompleted >= 6 then
                         ghostTraitsRecords["DulluhanSpeed"] = 1
                         Library:Notify({Title = "Trait found!", Content = "Speed increasing, dullahan?", Duration = 4})
                         return
                     end
+                else
+                    checksCompleted = 0
                 end
             end
 
@@ -515,6 +520,7 @@ local function checkTraitsEvidence()
 
     local function checkOniSpeed()
         if ghostTraitsRecords["OniSpeed"] ~= 0 then return end
+        if ghostAverageSpeed ~= math.abs(ghostAverageSpeed) then return end
 
         local function reset()
             scriptData["OniSpeedometer"] = {} 
@@ -557,7 +563,6 @@ local function checkTraitsEvidence()
             for _,speed in pairs(scriptData["OniSpeedometer"]) do
                 if speed == ghostPreHuntSpeed then reset() return end
                 totalSpeed += speed
-                print("Total speed is now: " .. totalSpeed)
             end
 
             if (totalSpeed / #scriptData["OniSpeedometer"] == scriptData["OniSpeedometer"][1]) then
@@ -589,6 +594,29 @@ local function updateGhostInformation()
         end
     end
 
+    local function verifyGhostIsHunting()
+        local temporaryIsHunting = false
+
+        local ghostModelIsHunting = ghostModel:GetAttribute("Hunting")
+        local exitDoor = doors:FindFirstChild("ExitDoor")
+        
+        if exitDoor ~= nil then
+            if exitDoor:GetAttribute("Locked") then
+                if exitDoor:GetAttribute("Locked") == true then 
+                    temporaryIsHunting = true 
+                    return true
+                end
+            end
+        end;
+        
+        if ghostModelIsHunting == true then
+            temporaryIsHunting = true
+            return true
+        end
+
+        return false
+    end
+
     local temporaryGhostInformationText = ""
     local unknownData = "Not detecting..."
 
@@ -596,7 +624,7 @@ local function updateGhostInformation()
     ghostcurrentLocation = ghostModel:GetAttribute("CurrentRoom")
     ghostCurrentSpeed = math.floor(memory_read("float", ghostHumanoid.Address+offsets.Humanoid.Walkspeed) * 100) / 100
     ghostGender = ghostModel:GetAttribute("Gender")
-    ghostHunting = ghostModel:GetAttribute("Hunting") or false
+    ghostHunting = verifyGhostIsHunting()
 
     local ghostInformationTemplate = {
         ["Ghost Room"] = ghostRoom or unknownData,
@@ -1162,26 +1190,16 @@ traitCheckSettings:OnChanged(function()
     changeTraitConfigs(traitCheckSettings.Value)
 end)
 
-local function startUpDialog()
+local function loadStartupConfigs()
     local function setupTo407()
+        print("Selected the 4.07")
         zeroEvidenceMode:SetValue(true)
         traitCheckSettings:SetValue("4.07")
     end
 
-    local function setupToDefault()
-        zeroEvidenceMode:SetValue(false)
-        traitCheckSettings:SetValue("Default")
-    end
-
     if workspace:GetAttribute("Difficulty") == "Custom" then
-        window:Dialog({
-        Title = "Difficulty checks.",
-        Content = "Do you want to convert your settings to 4.07 Difficulty?",
-        Buttons = {
-            { Title = "Yes", Callback = setupTo407()},
-            { Title = "No", Callback = setupToDefault()},
-        },
-        })
+        Library:Notify({Title = "Difficulty Detected.", Content = "Changed the settings to match the difficulty.", Duration = 6 })
+        setupTo407()
     end
 end
 
@@ -1191,7 +1209,7 @@ task.spawn(function()
     scanRoomsForESP()
     ghostTracersESP()
     scanGhostForESP()
-    startUpDialog()
+    loadStartupConfigs()
     
 
     while Library.Unloaded == false do -- Main Loop
