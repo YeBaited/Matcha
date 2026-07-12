@@ -1,5 +1,5 @@
 
-if game.PlaceId == 18199615050 then warn("You're currently in the room, run this once you get in to a game.") return end
+if game.PlaceId == 18199615050 then warn("You're currently in the room, run this once you get in to a game. or your matcha bugged you might have to eject.") return end
 
 local TheoOffsets = httpget("https://offsets.imtheo.lol/version-90f2fddd3b244ff6/offsets.json")
 loadstring(game:HttpGet("https://scripts.wabisabi.mom/wabi-sabi-ui-lib.lua"))()
@@ -98,7 +98,7 @@ local ghostTraits = {
     Keres = {"IsFemale"},
     Leviathan = {},
     Nightmare = {},
-    Oni = {"Fast", "OniSpeed"},
+    Oni = {"OniSpeed"},
     Phantom = {"phantomBlink"},
     Ravager = {},
     Revenant = {},
@@ -1043,7 +1043,7 @@ local function renderESP()
             
         local worldPos, isVisible 
 
-        if espTable.mainPart.Parent == nil then
+        if espTable.mainPart.Parent == nil and espTable.unremovable == false then
             espLogged[espId].drawing:Remove()
             espLogged[espId] = nil
             return
@@ -1127,6 +1127,13 @@ local function renderESP()
             espTable.drawing.Position = worldPos
             continue
         end
+        
+        if espTable.unremovable == false then
+            espLogged[espId].drawing:Remove()
+            espLogged[espId] = nil
+            continue
+        end
+        
         espTable.drawing.Visible = false
     end
 end
