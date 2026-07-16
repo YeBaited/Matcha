@@ -65,7 +65,8 @@ local ghostTraitsRecords = {
     ["EntityAbility"] = 0,
     ["BansheeWail"] = 0,
     ["GhostBurn"] = 0,
-    ["DybbukBodyMover"] = 0
+    ["DybbukBodyMover"] = 0,
+    ["WendigooSpeed"] = 0,
 }
 
 local ghostEvidence = {
@@ -119,7 +120,7 @@ local ghostTraits = {
     Umbra = {"UmbraFootstep"},
     Vesper = {},
     Vex = {"VexLidar"},
-    Wendigo = {},
+    Wendigo = {"WendigooSpeed"},
     ["The Wisp"] = {"GhostBurn"},
     Wraith = {"IgnoresSalt"}
 }
@@ -606,6 +607,7 @@ local function checkTraitsEvidence()
 
         local ghostModelAttribute = ghostModel:GetAttribute("CantDisableElectronics")
         if ghostModelAttribute then
+            if ghostModelAttribute ~= true then return end
             ghostTraitsRecords["GhoulEquipmentEffect"] = 1
             Library:Notify({Title = "Trait found!", Content = "Can't disable electronic!", Duration = 4})
             return
@@ -768,6 +770,67 @@ local function checkTraitsEvidence()
         end
     end
 
+    local function checkWendigoo()  
+        if ghostTraitsRecords["WendigooSpeed"] ~= 0 then return end
+        if not scriptData["WendigooStatistics"] then
+            scriptData["WendigooStatistics"] = {}
+            scriptData["WendigooStatistics"].huntLog = {}
+            scriptData["WendigooStatistics"].ghostSpeedLog = {}
+            scriptData["WendigooStatistics"].teamEnergyLog = {}
+            scriptData["WendigooStatistics"].passedChecks = 0
+            scriptData["WendigooStatistics"].failedChecks = 0
+        end
+
+        local function getTeamAverageEnergy()
+            local playersChildren = players:GetChildren()
+            local total = 0
+            for _,player in pairs(playersChildren) do
+                local playerEnergy = player:GetAttribute("Energy")
+                if type(playerEnergy) ~= "number" then continue end
+                total += math.floor(playerEnergy * 100) / 100
+            end
+
+            return total / #playersChildren
+        end
+
+        local function printLog()
+            print(">Logged<")
+            print(scriptData["WendigooStatistics"].huntLog[#scriptData["WendigooStatistics"].huntLog])
+            print(scriptData["WendigooStatistics"].ghostSpeedLog[#scriptData["WendigooStatistics"].ghostSpeedLog])
+            print(scriptData["WendigooStatistics"].teamEnergyLog[#scriptData["WendigooStatistics"].teamEnergyLog])
+        end
+
+        if ghostHunting == scriptData["WendigooStatistics"].huntLog[#scriptData["WendigooStatistics"].huntLog] then return end
+        table.insert(scriptData["WendigooStatistics"].huntLog, ghostHunting)
+        table.insert(scriptData["WendigooStatistics"].ghostSpeedLog, ghostCurrentSpeed)
+        table.insert(scriptData["WendigooStatistics"].teamEnergyLog, getTeamAverageEnergy())
+
+        if #scriptData["WendigooStatistics"].huntLog < 2 then return end
+
+        if (scriptData["WendigooStatistics"].teamEnergyLog[#scriptData["WendigooStatistics"].teamEnergyLog] ~= scriptData["WendigooStatistics"].teamEnergyLog[#scriptData["WendigooStatistics"].teamEnergyLog-1]) then
+            if scriptData["WendigooStatistics"].ghostSpeedLog[#scriptData["WendigooStatistics"].ghostSpeedLog] ~= scriptData["WendigooStatistics"].ghostSpeedLog[#scriptData["WendigooStatistics"].ghostSpeedLog-1] then
+                -- printLog()
+                -- print("Speed is different after energy changed.")
+                scriptData["WendigooStatistics"].passedChecks += 1
+            else
+                -- print("Failed the test!")
+                scriptData["WendigooStatistics"].passedChecks = 0
+            end
+
+        else
+            -- print("No energy change, not checking for speed...")
+        end
+
+        if scriptData["WendigooStatistics"].passedChecks >= 4 then
+            ghostTraitsRecords["WendigooSpeed"] = 1
+            Library:Notify({Title = "Trait found!", Content = "Speed changed on energy level!", Duration = 4})
+        end
+
+        if scriptData["WendigooStatistics"].failedChecks >= 6 then
+            ghostTraitsRecords["WendigooSpeed"] = -1
+        end
+    end
+
     checkFemale()
     checkCanSlow()
     checkIgnoreSalt()
@@ -784,6 +847,7 @@ local function checkTraitsEvidence()
     checkBansheeWail()
     checkGhostBurn()
     checkDybbukBodyMover()
+    checkWendigoo()
 end
 
 local function updateGhostInformation()
@@ -891,7 +955,7 @@ local function updateNoteInformation()
     end
 
     if ghostTraitsRecords["PhantomBlink"] == 1 then
-        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Phantom, due to to it's blinking speed."
+        temporaryNoteInformation = temporaryNoteInformation .. "Might be a Phantom, due to to it's blinking speed.\n"
     end
 
     if ghostTraitsRecords["SaltSlowed"] == 1 then
@@ -938,8 +1002,12 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "Ghost is burning, Wisp?\n"
     end
 
-    if ghostTraitsRecords["DybbukBodyMover"]  == 1 then
+    if ghostTraitsRecords["DybbukBodyMover"] == 1 then
         temporaryNoteInformation = temporaryNoteInformation .. "Body was thrown! Dybbuk?\n"
+    end
+
+    if ghostTraitsRecords["WendigooSpeed"] == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Speed changed per energy, Wendigoo?\n"
     end
 
     if temporaryNoteInformation == "" then
@@ -957,6 +1025,7 @@ local function updateGuessInformation()
     local mainTemporaryString = ""
     local highestVerified = 0
     local totalPassedChecks = 0
+    currentGhost = {}
 
     local function shouldIgnore(ghostName)
         for ghost, _ in pairs(ignoredGhost) do
@@ -1223,7 +1292,6 @@ local function playerEnergyESP()
 
         espLogged[tostring(player.Address)].drawing = MatchaDrawing
     end
-
 end
 
 local function clearESPLogged()
@@ -1645,5 +1713,3 @@ task.spawn(function()
         task.wait(0.001)
     end
 end)
-
-
