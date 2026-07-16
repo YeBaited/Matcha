@@ -22,7 +22,7 @@ local saltPile = workspace.SaltPiles
 local brokenGlass = workspace.BrokenGlass
 local doors = workspace.Doors
 local ragdolls = workspace.Ragdolls
-local effectHolder = workspace.EffectHolder
+local effectHolder = workspace.EffectHolder 
 local ghostHumanoid = ghostModel.Humanoid
 local invisibleGhostWalls = map.InvisibleGhostWalls
 local rooms = map.Rooms
@@ -56,6 +56,7 @@ local ghostTraitsRecords = {
     ["Fast"] = 0,
     ["FastWhileInvis"] = 0,
     ["DulluhanSpeed"] = 0,
+    ["DulluhanHeadless"] = 0,
     ["OniSpeed"] = 0,
     ["PhantomBlink"] = 0,
     ["GhoulEquipmentEffect"] = 0,
@@ -64,6 +65,7 @@ local ghostTraitsRecords = {
     ["EntityAbility"] = 0,
     ["BansheeWail"] = 0,
     ["GhostBurn"] = 0,
+    ["DybbukBodyMover"] = 0
 }
 
 local ghostEvidence = {
@@ -98,8 +100,8 @@ local ghostTraits = {
     Aswang = {"SaltSlowed"},
     Banshee = {"BansheeWail"},
     Demon = {},
-    Dullahan = {"DulluhanSpeed"},
-    Dybbuk = {},
+    Dullahan = {"DulluhanSpeed", "DulluhanHeadless"},
+    Dybbuk = {"DybbukBodyMover"},
     Entity = {"EntityAbility"},
     Ghoul = {"GhoulEquipmentEffect"},
     Keres = {"IsFemale"},
@@ -375,6 +377,7 @@ local function checkTraitsEvidence()
 
     local function checkCanSlow() -- can only be 1 since it might make mistake if it turns -1.
         if ghostTraitsRecords["CanSlow"] ~= 0 then return end
+        if not ghostHunting then return end
         for _,player in pairs(players:GetChildren()) do
             if player:GetAttribute("Slowed") == true then
                 ghostTraitsRecords["CanSlow"] = 1
@@ -457,7 +460,7 @@ local function checkTraitsEvidence()
     end
     
     local function checkPhantomBlink()
-        if ghostTraitsRecords["PhantomBlink"] == 1 then return end
+        if ghostTraitsRecords["PhantomBlink"] ~= 0 then return end
         if not ghostHunting then return end
 
         if not scriptData["checkFastBlinkLog"] then
@@ -482,6 +485,10 @@ local function checkTraitsEvidence()
         if checksPassed >= currentTraitConfig.phantomChecksRequired then
             ghostTraitsRecords["PhantomBlink"] = 1
             Library:Notify({Title = "Trait found!", Content = "Faster when invisible!", Duration = 4})
+        else
+            table.insert(ignoredGhost, "Phantom")
+            ghostTraitsRecords["PhantomBlink"] = -1
+            Library:Notify({Title = "Trait found!", Content = "Not a phantom, surely?", Duration = 4})
         end  
         
     end
@@ -525,6 +532,16 @@ local function checkTraitsEvidence()
 
             scriptData["Dullahanspeedometer"] = {}
             scriptData["DullahanspeedometerTimestamp"] = {}
+        end
+    end
+
+    local function checkDulluhanHeadless()
+        if ghostTraitsRecords["DulluhanHeadless"] ~= 0 then return end
+        local headlessAttribute = ghostModel:GetAttribute("Headless") 
+        if headlessAttribute == nil then return end
+        if headlessAttribute then 
+            ghostTraitsRecords["DulluhanHeadless"] = 1
+            Library:Notify({Title = "Trait found!", Content = "Dulluhan headless!!!", Duration = 4})
         end
     end
 
@@ -720,6 +737,37 @@ local function checkTraitsEvidence()
         end
     end
 
+    local function checkDybbukBodyMover()
+        if ghostTraitsRecords["DybbukBodyMover"] ~= 0 then return end
+        if not ghostHunting then return end
+
+        if not scriptData["RagdollsLogged"] then
+            scriptData["RagdollsLogged"] = {}
+        end
+        for _,corpse in ipairs(ragdolls:GetChildren()) do
+            if not scriptData["RagdollsLogged"][corpse.Name] then
+                scriptData["RagdollsLogged"][corpse.Name] = {}
+                scriptData["RagdollsLogged"][corpse.Name].loggedTime = os.time()
+            end
+
+            if ((os.time() - scriptData["RagdollsLogged"][corpse.Name].loggedTime) < 3 ) then return end -- Fresh corpse, means that the corpse is still actively falling making falsePositives
+
+            local corpseHumanoidRootPart = corpse:FindFirstChild("HumanoidRootPart")
+            if not corpseHumanoidRootPart then continue end
+            local corpseLinearVelocity = corpseHumanoidRootPart.AssemblyLinearVelocity
+            
+            local x = math.abs(corpseLinearVelocity.X)
+            local y = math.abs(corpseLinearVelocity.Y)
+            local z = math.abs(corpseLinearVelocity.z)
+
+            if x > 10 or y > 10 or z > 10 then
+                ghostTraitsRecords["DybbukBodyMover"] = 1
+                Library:Notify({Title = "Trait found!", Content = "A body has been been thrown!", Duration = 4})
+                return
+            end
+        end
+    end
+
     checkFemale()
     checkCanSlow()
     checkIgnoreSalt()
@@ -727,6 +775,7 @@ local function checkTraitsEvidence()
     checkSaltSlowed()
     checkPhantomBlink()
     checkDulluhanSpeed()
+    checkDulluhanHeadless()
     checkOniSpeed()
     checkGhoulEquipmentEffect()
     checkVexLidar()
@@ -734,6 +783,7 @@ local function checkTraitsEvidence()
     checkEntityAbility()
     checkBansheeWail()
     checkGhostBurn()
+    checkDybbukBodyMover()
 end
 
 local function updateGhostInformation()
@@ -856,7 +906,7 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "Might be a phantom? If ghost speed keeps alternating it's phantom.\n"
     end
 
-    if ghostTraitsRecords["DulluhanSpeed"] == 1 then
+    if ghostTraitsRecords["DulluhanSpeed"] == 1 or ghostTraitsRecords["DulluhanHeadless"] == 1 then
         temporaryNoteInformation = temporaryNoteInformation .. "A Dullhan traits found, Dullahan?\n"
     end
 
@@ -888,6 +938,10 @@ local function updateNoteInformation()
         temporaryNoteInformation = temporaryNoteInformation .. "Ghost is burning, Wisp?\n"
     end
 
+    if ghostTraitsRecords["DybbukBodyMover"]  == 1 then
+        temporaryNoteInformation = temporaryNoteInformation .. "Body was thrown! Dybbuk?\n"
+    end
+
     if temporaryNoteInformation == "" then
         temporaryNoteInformation = "I'm still thinking sir."
     end
@@ -903,12 +957,22 @@ local function updateGuessInformation()
     local mainTemporaryString = ""
     local highestVerified = 0
     local totalPassedChecks = 0
+
+    local function shouldIgnore(ghostName)
+        for ghost, _ in pairs(ignoredGhost) do
+            if ghost == ghostName then
+                return true
+            end
+        end
+        return false
+    end
+
     if not scriptData["ghostGuessCurrentData"] then
         scriptData["ghostGuessCurrentData"] = {}
     end
 
     for _ghostName,_ghostEvidence in pairs(ghostEvidence) do
-
+        if shouldIgnore(_ghostName) then continue end
         if not scriptData["ghostGuessCurrentData"][_ghostName] then
             scriptData["ghostGuessCurrentData"][_ghostName] = {}
         end
@@ -1305,7 +1369,7 @@ local function renderESP()
         if espTable.category == "playerEnergyESP" and config.playerEnergyESPEnabled then
             local playerEnergyLevel = espTable.targetPlayer:GetAttribute("Energy")
             local playerCorpse = ragdolls:FindFirstChild(espTable.targetPlayer.Name)
-            if not playerEnergyLevel then playerEnergyLevel = -6767 end            
+            if playerEnergyLevel == nil then playerEnergyLevel = -9999 end            
             
             if playerCorpse then
                 espTable.drawing.Text = "Energy b/Death: " .. espTable.energy or "UNK"
